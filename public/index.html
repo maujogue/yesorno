@@ -61,6 +61,12 @@
   h1 span:nth-child(2) { transform: rotate(2deg) translateY(4px); font-size: .7em; }
   h1 span:nth-child(3) { transform: rotate(-1deg); }
 
+  /* everything between the title and the footer, centered vertically in the free space */
+  .stage {
+    flex: 1; width: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+
   /* hand-drawn boxes */
   .sketch {
     border: var(--line) solid var(--ink);
@@ -213,6 +219,7 @@
 <main>
   <h1><span data-i18n="t1">YES</span> <span data-i18n="t2">or</span> <span data-i18n="t3">NO?</span></h1>
 
+  <div class="stage">
   <div class="bubble sketch" id="bubble" aria-live="polite">ask me something.</div>
 
   <button class="duck-btn" id="duckBtn" type="button" aria-label="The duck. Tap to ask out loud.">
@@ -293,6 +300,7 @@
   </form>
 
   <p class="status" id="status" role="status"></p>
+  </div>
 
 
   <footer>
@@ -331,7 +339,6 @@
       share: "send to friends", copied: "copied!", yes: "YES.", no: "NO.",
       serious: "this one's too big for a duck.",
       help: `please talk to someone you trust, or find free, confidential help at ${HELP}.`,
-      again: "you already asked. the duck has spoken.",
       confused: "the duck got confused. try again.", offline: "can't reach the duck. check your internet.",
       breather: "the duck needs a breather. try again in a minute.", tooLong: "keep it short. the duck doesn't read essays.",
       micBlocked: "mic is blocked. typing works too.", screenshot: "screenshot it instead!",
@@ -346,7 +353,6 @@
       share: "envoyer aux potes", copied: "copié !", yes: "OUI.", no: "NON.",
       serious: "celle-là est trop grande pour un canard.",
       help: `parle à quelqu'un en qui tu as confiance, ou trouve de l'aide gratuite et confidentielle sur ${HELP}.`,
-      again: "tu as déjà demandé. le canard a parlé.",
       confused: "le canard s'est embrouillé. réessaie.", offline: "impossible de joindre le canard. vérifie ta connexion.",
       breather: "le canard fait une pause. réessaie dans une minute.", tooLong: "fais court. le canard ne lit pas de romans.",
       micBlocked: "micro bloqué. tu peux aussi écrire.", screenshot: "fais une capture d'écran !",
@@ -361,7 +367,6 @@
       share: "mandar a amigos", copied: "¡copiado!", yes: "SÍ.", no: "NO.",
       serious: "esta es demasiado grande para un pato.",
       help: `habla con alguien de confianza, o encuentra ayuda gratuita y confidencial en ${HELP}.`,
-      again: "ya preguntaste. el pato ha hablado.",
       confused: "el pato se confundió. inténtalo otra vez.", offline: "no encuentro al pato. revisa tu internet.",
       breather: "el pato necesita un respiro. prueba en un minuto.", tooLong: "sé breve. el pato no lee ensayos.",
       micBlocked: "micrófono bloqueado. también puedes escribir.", screenshot: "¡haz una captura!",
@@ -376,7 +381,6 @@
       share: "an freunde schicken", copied: "kopiert!", yes: "JA.", no: "NEIN.",
       serious: "die frage ist zu groß für eine ente.",
       help: `sprich mit jemandem, dem du vertraust, oder finde kostenlose, vertrauliche hilfe auf ${HELP}.`,
-      again: "hast du schon gefragt. die ente hat gesprochen.",
       confused: "die ente ist verwirrt. versuch's nochmal.", offline: "die ente ist nicht erreichbar. check dein internet.",
       breather: "die ente braucht 'ne pause. versuch's in einer minute.", tooLong: "kurz bitte. die ente liest keine romane.",
       micBlocked: "mikro blockiert. tippen geht auch.", screenshot: "mach einen screenshot!",
@@ -676,20 +680,7 @@
     if (location.pathname !== path) history.replaceState(null, "", path);
   }
 
-  // "you already asked" is about *this* person, not the server's dictionary
-  // (a friend opening your link hasn't asked yet). Remembered per browser.
-  function askedBefore(question) {
-    const key = slug(question || "").replace(/-/g, "");
-    if (!key) return false;
-    let seen = [];
-    try { seen = JSON.parse(store.get("yesorno-asked") || "[]"); } catch {}
-    const before = seen.includes(key);
-    if (!before) store.set("yesorno-asked", JSON.stringify([...seen, key].slice(-300)));
-    return before;
-  }
-
   function reveal(question, answer) {
-    const again = askedBefore(question);
     last = { question, answer };
     setPath(question);
     answered = true;
@@ -705,7 +696,7 @@
     const yes = answer === "YES";
     setState(yes ? "yes" : "no");
     say(yes ? "yes" : "no", true);
-    setStatus(again ? "again" : "");
+    setStatus("");
     if (yes) yesQuack(); else noQuack();
     if (navigator.vibrate) navigator.vibrate(yes ? 60 : [50, 40, 50]);
   }
