@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yes or No?</title>
+<meta name="description" content="Ask the duck. The duck knows. The duck won't tell you why.">
+<meta property="og:title" content="Yes or No?">
+<meta property="og:description" content="Ask the duck. The duck knows. The duck won't tell you why.">
+<meta name="theme-color" content="#f8f5d7">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦆</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sniglet:wght@400;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1b1b1b;
+    --paper: #f8f5d7;
+    --yes: #e2f5c8;
+    --no: #fadbcc;
+    --serious: #e3e4f7;
+    --duck: #ffd84d;
+    --beak: #ff9a3c;
+    --line: 5px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Sniglet", "Comic Sans MS", "Chalkboard SE", system-ui, sans-serif;
+    font-weight: 400;
+    transition: background-color .5s ease;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+  body.yes { background: var(--yes); }
+  body.no { background: var(--no); }
+  body.serious { background: var(--serious); }
+
+  main {
+    max-width: 480px; min-height: 100%;
+    margin: 0 auto;
+    padding: max(20px, env(safe-area-inset-top)) 16px 20px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  h1 {
+    margin: 4px 0 0;
+    font-weight: 800;
+    font-size: clamp(3rem, 15vw, 4.6rem);
+    line-height: .95;
+    letter-spacing: .01em;
+    text-align: center;
+    width: 100%;
+    white-space: nowrap; /* always one line; fitTitle() shrinks it to fit */
+  }
+  h1 span { display: inline-block; }
+  h1 span:nth-child(1) { transform: rotate(-3deg); }
+  h1 span:nth-child(2) { transform: rotate(2deg) translateY(4px); font-size: .7em; }
+  h1 span:nth-child(3) { transform: rotate(-1deg); }
+
+  /* hand-drawn boxes */
+  .sketch {
+    border: var(--line) solid var(--ink);
+    border-radius: 255px 18px 225px 18px / 18px 225px 18px 255px;
+    background: #fff;
+  }
+
+  /* speech bubble */
+  .bubble {
+    position: relative;
+    margin: 26px 0 0;
+    min-width: 150px; max-width: 100%;
+    padding: 12px 24px 8px;
+    text-align: center;
+    font-size: 1.35rem;
+    transform: rotate(-2deg);
+    transition: transform .3s;
+  }
+  .bubble::after {
+    content: "";
+    position: absolute; left: 50%; bottom: -17px;
+    width: 26px; height: 26px;
+    background: #fff;
+    border-right: var(--line) solid var(--ink);
+    border-bottom: var(--line) solid var(--ink);
+    transform: translateX(-50%) rotate(45deg) skew(8deg, 8deg);
+    z-index: -1;
+  }
+  .bubble.big { font-size: clamp(3rem, 16vw, 4.2rem); font-weight: 800; padding: 10px 30px 0; line-height: 1.1; }
+  .bubble.pop { animation: pop .45s cubic-bezier(.2, 1.6, .4, 1); }
+  @keyframes pop { from { transform: rotate(-2deg) scale(.4) } to { transform: rotate(-2deg) scale(1) } }
+  .dots::after { content: ""; animation: dots 1s steps(4) infinite; }
+  @keyframes dots { 0% { content: "" } 25% { content: "." } 50% { content: ".." } 75% { content: "..." } }
+
+  /* the duck */
+  .duck-btn {
+    margin: 14px 0 0; padding: 0; border: 0; background: none; cursor: pointer;
+    width: min(70vw, 270px);
+  }
+  .duck-btn:focus-visible { outline: 4px dashed var(--ink); outline-offset: 6px; border-radius: 20px; }
+  .duck { width: 100%; height: auto; display: block; overflow: visible; }
+  .duck .ln { stroke: var(--ink); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+  .duck .nofill { fill: none; }
+  #duckBody { transform-origin: 50% 90%; transform-box: view-box; animation: bob 2.6s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }
+
+  .eyes-open { transform-box: fill-box; transform-origin: center; animation: blink 4.5s infinite; }
+  @keyframes blink { 0%, 95%, 100% { transform: scaleY(1) } 97% { transform: scaleY(.1) } }
+  #pupils { transition: transform .3s ease; }
+
+  /* expression parts hidden by default */
+  .eyes-happy, .brows-angry, .brows-sad, .brow-think, .beak-open, .sweat { display: none; }
+
+  /* thinking */
+  .thinking #duckBody { animation: rock .5s ease-in-out infinite; }
+  @keyframes rock { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) } }
+  .thinking #pupils { animation: lookaround 1.2s ease-in-out infinite; }
+  @keyframes lookaround { 0%,100% { transform: translate(-5px,-6px) } 50% { transform: translate(5px,-6px) } }
+  .thinking .brow-think, .thinking .sweat { display: inline; }
+
+  /* yes */
+  .yes #duckBody { animation: hop .5s cubic-bezier(.3, 1.8, .5, 1) 2; }
+  @keyframes hop { 0%,100% { transform: translateY(0) scaleY(1) } 30% { transform: translateY(4px) scaleY(.92) } 60% { transform: translateY(-22px) scaleY(1.04) } }
+  .yes .eyes-open { display: none; }
+  .yes .eyes-happy, .yes .beak-open { display: inline; }
+  .yes .beak-closed { display: none; }
+
+  /* no */
+  .no #duckBody { animation: shake .6s ease-in-out 2; }
+  @keyframes shake { 0%,100% { transform: translateX(0) } 20%,60% { transform: translateX(-10px) rotate(-3deg) } 40%,80% { transform: translateX(10px) rotate(3deg) } }
+  .no .brows-angry { display: inline; }
+  .no #pupils { transform: translate(0, 2px); }
+
+  /* serious */
+  .serious #duckBody { animation: none; }
+  .serious .brows-sad { display: inline; }
+  .serious #pupils { transform: translate(0, 5px); }
+
+  .shadow { width: 62%; height: 16px; margin: -6px auto 0; background: rgba(0,0,0,.12); border-radius: 50%; }
+
+  /* form */
+  form { width: 100%; margin-top: 18px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; align-items: flex-start; margin-top: 14px; }
+  .field {
+    flex: 1; min-width: 0; display: flex; align-items: center;
+    padding: 2px 6px 2px 16px;
+    transform: rotate(.6deg);
+  }
+  .field:focus-within { box-shadow: 4px 5px 0 var(--ink); }
+  textarea {
+    flex: 1; min-width: 0; border: 0; outline: 0; background: none;
+    font: inherit; font-size: 1.15rem; line-height: 1.3; color: var(--ink);
+    padding: 12px 0 8px; resize: none; overflow: hidden; display: block;
+  }
+  textarea::placeholder { color: #8b8778; }
+  .btn {
+    flex: none; border: var(--line) solid var(--ink); background: #fff; color: var(--ink);
+    font: inherit; font-weight: 800; font-size: 1.15rem; cursor: pointer;
+    border-radius: 18px 225px 18px 255px / 255px 18px 225px 18px;
+    box-shadow: 3px 4px 0 var(--ink);
+    transition: transform .08s, box-shadow .08s;
+  }
+  .btn:active { transform: translate(3px, 4px); box-shadow: 0 0 0 var(--ink); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .ask { padding: 10px 18px 6px; background: var(--duck); transform: rotate(-1.5deg); }
+  .ask:active { transform: rotate(-1.5deg) translate(3px, 4px); }
+  .mic { width: 44px; height: 44px; margin-left: 4px; border-width: 4px; border-radius: 50%; display: grid; place-items: center; box-shadow: none; }
+  .mic svg { width: 20px; height: 20px; }
+  .mic.listening { background: #ff6b6b; animation: wiggle .4s ease-in-out infinite; }
+  @keyframes wiggle { 0%,100% { transform: rotate(-8deg) } 50% { transform: rotate(8deg) } }
+
+  .status { margin: 14px 0 0; text-align: center; font-size: 1rem; min-height: 1.3em; }
+  .status a { color: var(--ink); font-weight: 800; }
+
+  .share { padding: 10px 14px 6px; font-size: 1rem; transform: rotate(2deg); max-width: 100%; }
+  .share:active { transform: rotate(2deg) translate(3px, 4px); }
+  /* after copying, the button turns into a little note showing what was copied */
+  .share.copied {
+    background: var(--yes); font-weight: 400; font-size: .95rem; text-align: left;
+    padding: 10px 16px 8px; white-space: pre-line; overflow-wrap: anywhere;
+    animation: note .55s cubic-bezier(.2, 1.6, .4, 1);
+  }
+  .share .tag { display: block; font-weight: 800; font-size: 1.05rem; margin-bottom: 2px; }
+  @keyframes note {
+    0% { transform: rotate(2deg) scale(.6); }
+    60% { transform: rotate(-2deg) scale(1.05); }
+    100% { transform: rotate(2deg) scale(1); }
+  }
+  [hidden] { display: none !important; }
+
+  footer { margin-top: auto; padding-top: 28px; font-size: .9rem; text-align: center; }
+  .flags { display: flex; gap: 10px; justify-content: center; margin-bottom: 10px; }
+  .flag {
+    width: 40px; height: 28px; padding: 0; cursor: pointer; overflow: hidden;
+    border: 3px solid var(--ink); border-radius: 6px 3px 7px 3px / 3px 7px 3px 6px;
+    background: none; opacity: .4; transition: opacity .2s, transform .15s;
+  }
+  .flag svg { display: block; width: 100%; height: 100%; }
+  .flag:hover { opacity: .75; }
+  .flag[aria-pressed="true"] { opacity: 1; transform: rotate(-4deg) scale(1.1); box-shadow: 2px 3px 0 var(--ink); }
+  .fine { margin: 0; opacity: .6; }
+  .fine button { background: none; border: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1><span data-i18n="t1">YES</span> <span data-i18n="t2">or</span> <span data-i18n="t3">NO?</span></h1>
+
+  <div class="bubble sketch" id="bubble" aria-live="polite">ask me something.</div>
+
+  <button class="duck-btn" id="duckBtn" type="button" aria-label="The duck. Tap to ask out loud.">
+    <svg class="duck" id="duck" viewBox="0 0 320 320" aria-hidden="true">
+      <defs>
+        <filter id="boil" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence id="boilNoise" type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="1"/>
+          <feDisplacementMap in="SourceGraphic" scale="4"/>
+        </filter>
+      </defs>
+      <g id="duckBody" filter="url(#boil)">
+        <!-- feet -->
+        <path class="ln" fill="var(--beak)" d="M108 292 q18 -16 38 0 q-19 8 -38 0 z"/>
+        <path class="ln" fill="var(--beak)" d="M178 292 q18 -16 38 0 q-19 8 -38 0 z"/>
+        <!-- tail -->
+        <path class="ln" fill="var(--duck)" d="M248 214 q22 -26 34 -34 q2 30 -18 52 z"/>
+        <!-- body -->
+        <path class="ln" fill="var(--duck)" d="M66 232 C58 180 112 162 160 164 C214 166 268 178 262 234 C256 284 204 296 160 295 C110 294 74 282 66 232 Z"/>
+        <!-- wing -->
+        <path class="ln nofill" d="M196 214 q38 0 40 34 q-28 10 -46 -12"/>
+        <!-- head -->
+        <circle class="ln" fill="var(--duck)" cx="160" cy="116" r="70"/>
+        <!-- hair tuft -->
+        <path class="ln nofill" d="M152 48 q-2 -22 16 -20 M162 48 q14 -16 24 -4"/>
+        <!-- cheeks -->
+        <circle cx="113" cy="146" r="11" fill="#ff8f8f" opacity=".45"/>
+        <circle cx="207" cy="146" r="11" fill="#ff8f8f" opacity=".45"/>
+        <!-- eyes -->
+        <g class="eyes-open">
+          <circle class="ln" fill="#fff" cx="134" cy="104" r="20"/>
+          <circle class="ln" fill="#fff" cx="187" cy="104" r="20"/>
+          <g id="pupils">
+            <circle fill="var(--ink)" cx="137" cy="107" r="8"/>
+            <circle fill="var(--ink)" cx="190" cy="107" r="8"/>
+          </g>
+        </g>
+        <g class="eyes-happy">
+          <path class="ln nofill" d="M118 110 q16 -22 32 0"/>
+          <path class="ln nofill" d="M171 110 q16 -22 32 0"/>
+        </g>
+        <!-- brows -->
+        <g class="brows-angry">
+          <path class="ln nofill" d="M114 74 l38 14"/>
+          <path class="ln nofill" d="M207 74 l-38 14"/>
+        </g>
+        <g class="brows-sad">
+          <path class="ln nofill" d="M116 86 l34 -12"/>
+          <path class="ln nofill" d="M205 86 l-34 -12"/>
+        </g>
+        <path class="ln nofill brow-think" d="M168 72 q18 -12 38 -2"/>
+        <!-- sweat drop -->
+        <path class="ln sweat" fill="#9fd8ff" d="M228 70 q10 14 0 22 q-10 -8 0 -22 z"/>
+        <!-- beak -->
+        <g class="beak-closed">
+          <path class="ln" fill="var(--beak)" d="M126 138 q34 -16 68 0 q-34 24 -68 0 z"/>
+        </g>
+        <g class="beak-open">
+          <path class="ln" fill="var(--beak)" d="M130 142 q30 46 60 0 z"/>
+          <path fill="#6b2323" d="M140 146 q20 26 40 0 z"/>
+          <path class="ln" fill="var(--beak)" d="M124 138 q36 -18 72 0 q-36 12 -72 0 z"/>
+        </g>
+      </g>
+    </svg>
+  </button>
+  <div class="shadow" aria-hidden="true"></div>
+
+  <form id="form" autocomplete="off">
+    <div class="field sketch">
+      <textarea id="q" rows="1" maxlength="200" placeholder="should I..." data-i18n-placeholder="placeholder" enterkeyhint="go" aria-label="Your yes or no question"></textarea>
+      <button class="btn mic" id="mic" type="button" aria-label="Ask out loud" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
+      </button>
+    </div>
+    <div class="row">
+      <button class="btn ask" id="askBtn" type="submit">ASK</button>
+      <button class="btn share" id="share" type="button" data-i18n="share" hidden>send to friends</button>
+    </div>
+  </form>
+
+  <p class="status" id="status" role="status"></p>
+
+
+  <footer>
+    <div class="flags" id="flags" role="group" aria-label="Language">
+      <button class="flag" type="button" data-lang="en" aria-label="English" aria-pressed="false">
+        <svg viewBox="0 0 60 30" preserveAspectRatio="none" aria-hidden="true"><clipPath id="gbT"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#gbT)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></svg>
+      </button>
+      <button class="flag" type="button" data-lang="fr" aria-label="Français" aria-pressed="false">
+        <svg viewBox="0 0 3 2" preserveAspectRatio="none" aria-hidden="true"><rect width="1" height="2" fill="#0055A4"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#EF4135"/></svg>
+      </button>
+      <button class="flag" type="button" data-lang="es" aria-label="Español" aria-pressed="false">
+        <svg viewBox="0 0 3 4" preserveAspectRatio="none" aria-hidden="true"><rect width="3" height="4" fill="#AA151B"/><rect y="1" width="3" height="2" fill="#F1BF00"/></svg>
+      </button>
+      <button class="flag" type="button" data-lang="de" aria-label="Deutsch" aria-pressed="false">
+        <svg viewBox="0 0 5 3" preserveAspectRatio="none" aria-hidden="true"><rect width="5" height="1" fill="#000"/><rect y="1" width="5" height="1" fill="#DD0000"/><rect y="2" width="5" height="1" fill="#FFCE00"/></svg>
+      </button>
+    </div>
+    <p class="fine"><span data-i18n="footer">for fun. not advice. the duck is not a doctor.</span> · <button id="sound" type="button">sound: on</button></p>
+  </footer>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const body = document.body, duck = $("duck"), duckBtn = $("duckBtn"), bubble = $("bubble"),
+        form = $("form"), q = $("q"), mic = $("mic"), askBtn = $("askBtn"),
+        status = $("status"), shareBtn = $("share"), soundBtn = $("sound");
+
+  // ---- languages (keep in sync with server.js) ----
+  const HELP = '<a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>';
+  const I18N = {
+    en: {
+      doc: "Yes or No?", t1: "YES", t2: "or", t3: "NO?",
+      idle: "ask me something.", listening: "i'm listening.",
+      nothing: "i didn't hear anything.", huh: "huh?", placeholder: "should I...", ask: "ASK", askAgain: "ASK AGAIN",
+      share: "send to friends", copied: "copied!", yes: "YES.", no: "NO.",
+      serious: "this one's too big for a duck.",
+      help: `please talk to someone you trust, or find free, confidential help at ${HELP}.`,
+      again: "you already asked. the duck has spoken.",
+      confused: "the duck got confused. try again.", offline: "can't reach the duck. check your internet.",
+      breather: "the duck needs a breather. try again in a minute.", tooLong: "keep it short. the duck doesn't read essays.",
+      micBlocked: "mic is blocked. typing works too.", screenshot: "screenshot it instead!",
+      footer: "for fun. not advice. the duck is not a doctor.", soundOn: "sound: on", soundOff: "sound: off",
+      shareQ: (q, w) => `i asked the duck “${q}”\n🦆 ${w}`,
+      shareLoud: (w) => `i asked the duck something out loud.\n🦆 ${w}`,
+    },
+    fr: {
+      doc: "Oui ou Non ?", t1: "OUI", t2: "ou", t3: "NON ?",
+      idle: "pose-moi une question.", listening: "je t'écoute.",
+      nothing: "j'ai rien entendu.", huh: "hein ?", placeholder: "est-ce que je devrais...", ask: "DIS-MOI", askAgain: "ENCORE",
+      share: "envoyer aux potes", copied: "copié !", yes: "OUI.", no: "NON.",
+      serious: "celle-là est trop grande pour un canard.",
+      help: `parle à quelqu'un en qui tu as confiance, ou trouve de l'aide gratuite et confidentielle sur ${HELP}.`,
+      again: "tu as déjà demandé. le canard a parlé.",
+      confused: "le canard s'est embrouillé. réessaie.", offline: "impossible de joindre le canard. vérifie ta connexion.",
+      breather: "le canard fait une pause. réessaie dans une minute.", tooLong: "fais court. le canard ne lit pas de romans.",
+      micBlocked: "micro bloqué. tu peux aussi écrire.", screenshot: "fais une capture d'écran !",
+      footer: "pour rire. pas un conseil. le canard n'est pas médecin.", soundOn: "son : oui", soundOff: "son : non",
+      shareQ: (q, w) => `j'ai demandé au canard « ${q} »\n🦆 ${w}`,
+      shareLoud: (w) => `j'ai posé une question au canard à voix haute.\n🦆 ${w}`,
+    },
+    es: {
+      doc: "¿Sí o No?", t1: "¿SÍ", t2: "o", t3: "NO?",
+      idle: "pregúntame algo.", listening: "te escucho.",
+      nothing: "no oí nada.", huh: "¿eh?", placeholder: "¿debería...?", ask: "DIME", askAgain: "OTRA VEZ",
+      share: "mandar a amigos", copied: "¡copiado!", yes: "SÍ.", no: "NO.",
+      serious: "esta es demasiado grande para un pato.",
+      help: `habla con alguien de confianza, o encuentra ayuda gratuita y confidencial en ${HELP}.`,
+      again: "ya preguntaste. el pato ha hablado.",
+      confused: "el pato se confundió. inténtalo otra vez.", offline: "no encuentro al pato. revisa tu internet.",
+      breather: "el pato necesita un respiro. prueba en un minuto.", tooLong: "sé breve. el pato no lee ensayos.",
+      micBlocked: "micrófono bloqueado. también puedes escribir.", screenshot: "¡haz una captura!",
+      footer: "es broma. no es un consejo. el pato no es médico.", soundOn: "sonido: sí", soundOff: "sonido: no",
+      shareQ: (q, w) => `le pregunté al pato «${q}»\n🦆 ${w}`,
+      shareLoud: (w) => `le pregunté algo al pato en voz alta.\n🦆 ${w}`,
+    },
+    de: {
+      doc: "Ja oder Nein?", t1: "JA", t2: "oder", t3: "NEIN?",
+      idle: "frag mich was.", listening: "ich höre zu.",
+      nothing: "ich hab nichts gehört.", huh: "hä?", placeholder: "soll ich...", ask: "FRAG", askAgain: "NOCHMAL",
+      share: "an freunde schicken", copied: "kopiert!", yes: "JA.", no: "NEIN.",
+      serious: "die frage ist zu groß für eine ente.",
+      help: `sprich mit jemandem, dem du vertraust, oder finde kostenlose, vertrauliche hilfe auf ${HELP}.`,
+      again: "hast du schon gefragt. die ente hat gesprochen.",
+      confused: "die ente ist verwirrt. versuch's nochmal.", offline: "die ente ist nicht erreichbar. check dein internet.",
+      breather: "die ente braucht 'ne pause. versuch's in einer minute.", tooLong: "kurz bitte. die ente liest keine romane.",
+      micBlocked: "mikro blockiert. tippen geht auch.", screenshot: "mach einen screenshot!",
+      footer: "nur spaß. kein rat. die ente ist kein arzt.", soundOn: "ton: an", soundOff: "ton: aus",
+      shareQ: (q, w) => `ich hab die ente gefragt: „${q}“\n🦆 ${w}`,
+      shareLoud: (w) => `ich hab die ente laut was gefragt.\n🦆 ${w}`,
+    },
+  };
+  const LANGS = Object.keys(I18N);
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+  const browserLang = (navigator.languages || [navigator.language || "en"]).map(l => l.slice(0, 2).toLowerCase()).find(l => LANGS.includes(l));
+  let lang = LANGS.includes(store.get("yesorno-lang")) ? store.get("yesorno-lang") : (browserLang || "en");
+  const T = () => I18N[lang];
+
+  // What's on screen, by key, so a language switch can re-render it.
+  let bubbleKey = "idle", statusKey = "", last = null;
+
+  function setLang(next) {
+    if (!LANGS.includes(next)) return;
+    lang = next;
+    store.set("yesorno-lang", lang);
+    document.documentElement.lang = lang;
+    document.title = T().doc;
+    document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = T()[el.dataset.i18n]; });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach(el => { el.placeholder = T()[el.dataset.i18nPlaceholder]; });
+    document.querySelectorAll(".flag").forEach(f => f.setAttribute("aria-pressed", String(f.dataset.lang === lang)));
+    renderSound();
+    renderAskBtn();
+    fitTitle();
+    if (bubbleKey !== "thinking") bubble.textContent = T()[bubbleKey];
+    setStatus(statusKey);
+    resetShareBtn();
+  }
+  // Keep the title on one line: start from the CSS size and scale down if it overflows.
+  const h1 = document.querySelector("h1");
+  function fitTitle() {
+    h1.style.fontSize = "";
+    h1.style.textAlign = "left"; // centered overflow is only half-counted by scrollWidth
+    const room = h1.clientWidth, need = h1.scrollWidth;
+    h1.style.textAlign = "";
+    if (need > room) h1.style.fontSize = (parseFloat(getComputedStyle(h1).fontSize) * room / need * 0.97) + "px";
+  }
+  addEventListener("resize", fitTitle);
+  document.fonts?.ready.then(fitTitle);
+
+  document.querySelectorAll(".flag").forEach(f => f.addEventListener("click", () => setLang(f.dataset.lang)));
+
+  const MIN_THINK_MS = 1600;
+  const MAX_RECORD_MS = 10000;
+  const STATES = ["thinking", "yes", "no", "serious"];
+  let busy = false, answered = false;
+
+  // ---- hand-drawn "line boil" ----
+  const noise = $("boilNoise");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduced) { let s = 1; setInterval(() => { s = (s % 3) + 1; noise.setAttribute("seed", s); }, 140); }
+
+  function setState(state) {
+    STATES.forEach(s => { duck.classList.remove(s); body.classList.remove(s); });
+    if (state) { void duck.offsetWidth; duck.classList.add(state); if (state !== "thinking") body.classList.add(state); }
+  }
+  function say(key, big = false) {
+    bubbleKey = key;
+    bubble.textContent = key === "thinking" ? "hmm" : T()[key];
+    bubble.classList.toggle("big", big);
+    bubble.classList.toggle("dots", key === "thinking");
+    bubble.classList.remove("pop"); void bubble.offsetWidth; bubble.classList.add("pop");
+  }
+  function setStatus(key) {
+    statusKey = key || "";
+    if (!key) status.textContent = "";
+    else if (key === "help") status.innerHTML = T().help; // static, trusted string
+    else status.textContent = T()[key];
+  }
+
+  // ---- sound ----
+  let soundOn = store.get("yesorno-sound") !== "off";
+  function renderSound() { soundBtn.textContent = soundOn ? T().soundOn : T().soundOff; }
+  soundBtn.addEventListener("click", () => { soundOn = !soundOn; renderSound(); store.set("yesorno-sound", soundOn ? "on" : "off"); });
+
+  // One AudioContext, created/resumed inside a tap so phones allow playback later.
+  let ctx;
+  function unlockAudio() {
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+    } catch {}
+  }
+  // The duck doesn't talk, it quacks. Synthesized: sawtooth through two "beak" formants.
+  function quack({ at = 0, from, to, dur, formant = 1200, gain = 0.5, growl = 0 }) {
+    const t = ctx.currentTime + at;
+    const osc = ctx.createOscillator(), amp = ctx.createGain(), out = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(to, t + dur);
+    for (const [f, q] of [[formant, 4], [formant * 2.1, 6]]) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = q;
+      osc.connect(bp).connect(amp);
+    }
+    amp.gain.setValueAtTime(0.0001, t);
+    amp.gain.exponentialRampToValueAtTime(gain, t + 0.015);
+    amp.gain.setValueAtTime(gain, t + dur * 0.6);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    if (growl) { // grumpy rasp: wobble the volume quickly
+      const lfo = ctx.createOscillator(), depth = ctx.createGain();
+      lfo.frequency.value = growl; depth.gain.value = 0.5;
+      lfo.connect(depth).connect(out.gain);
+      lfo.start(t); lfo.stop(t + dur);
+    }
+    amp.connect(out).connect(ctx.destination);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  }
+  // YES: two quick, bright, rising quacks.
+  function yesQuack() {
+    if (!soundOn || !ctx) return;
+    quack({ from: 480, to: 640, dur: 0.11, formant: 1400 });
+    quack({ at: 0.15, from: 620, to: 860, dur: 0.14, formant: 1600 });
+  }
+  // NO: one long, low, falling, grumpy quaaack.
+  function noQuack() {
+    if (!soundOn || !ctx) return;
+    quack({ from: 380, to: 210, dur: 0.42, formant: 900, gain: 0.6, growl: 28 });
+  }
+
+  // ---- voice input: record, the server decides on the audio and returns a transcript ----
+  const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  const recType = canRecord && ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]
+    .find(t => MediaRecorder.isTypeSupported(t));
+  let recorder = null, stream = null, vadTimer = null, maxTimer = null;
+  if (canRecord) mic.hidden = false;
+
+  async function startRecording() {
+    if (busy || recorder) return;
+    unlockAudio();
+    reset(); q.value = ""; fit();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      setStatus("micBlocked");
+      return;
+    }
+    const chunks = [];
+    recorder = new MediaRecorder(stream, recType ? { mimeType: recType } : undefined);
+    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      const type = (recorder.mimeType || recType || "audio/webm").split(";")[0];
+      cleanupRecording();
+      const blob = new Blob(chunks, { type });
+      if (blob.size < 1500) { setState(null); say("nothing"); return; }
+      ask({ audio: blob });
+    };
+    recorder.start();
+    mic.classList.add("listening");
+    say("listening");
+    watchSilence(stream);
+    maxTimer = setTimeout(stopRecording, MAX_RECORD_MS);
+  }
+  function stopRecording() {
+    if (recorder && recorder.state === "recording") recorder.stop();
+  }
+  function cleanupRecording() {
+    clearInterval(vadTimer); clearTimeout(maxTimer);
+    stream?.getTracks().forEach(t => t.stop());
+    mic.classList.remove("listening");
+    recorder = null; stream = null;
+  }
+  // Stop automatically ~1.2s after the person stops talking.
+  function watchSilence(stream) {
+    if (!ctx) return;
+    try {
+      const src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
+      an.fftSize = 1024; src.connect(an);
+      const data = new Uint8Array(an.fftSize);
+      let spoke = false, quietSince = 0;
+      vadTimer = setInterval(() => {
+        an.getByteTimeDomainData(data);
+        let sum = 0; for (const v of data) sum += (v - 128) ** 2;
+        const loud = Math.sqrt(sum / data.length) > 6;
+        const now = Date.now();
+        if (loud) { spoke = true; quietSince = 0; }
+        else if (spoke) { quietSince ||= now; if (now - quietSince > 1200) stopRecording(); }
+      }, 100);
+    } catch {}
+  }
+  mic.addEventListener("click", () => recorder ? stopRecording() : startRecording());
+
+  duckBtn.addEventListener("click", () => {
+    unlockAudio();
+    if (recorder) return stopRecording();
+    if (busy) return;
+    const typed = q.value.trim();
+    if (typed && !answered) return ask({ question: typed });
+    if (canRecord) startRecording(); else { yesQuack(); q.select(); q.focus(); }
+  });
+
+  // The question box grows to fit; Enter asks (Shift+Enter is ignored, questions are one line).
+  function fit() { q.style.height = "auto"; q.style.height = q.scrollHeight + "px"; }
+  q.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
+  });
+  // Editing the question puts the duck back to idle.
+  q.addEventListener("input", () => { fit(); if (answered) reset(); });
+  addEventListener("resize", fit);
+  document.fonts?.ready.then(fit);
+  q.addEventListener("focus", () => { if (answered) q.select(); });
+
+  // ---- asking ----
+  function renderAskBtn() { askBtn.textContent = answered ? T().askAgain : T().ask; }
+
+  // After an answer the button becomes "ask again": clear the box and focus it.
+  // Focusing inside the tap is what brings the keyboard up on phones.
+  askBtn.addEventListener("click", (e) => {
+    if (!answered) return; // normal submit
+    e.preventDefault();
+    stopRecording();
+    reset();
+    q.value = ""; fit();
+    setPath("");
+    q.focus();
+  });
+
+  function reset() {
+    answered = false;
+    renderAskBtn();
+    setState(null);
+    say("idle");
+    setStatus("");
+    shareBtn.hidden = true;
+    resetShareBtn();
+  }
+
+  function errorKey(status) {
+    if (status === 429) return "breather";
+    if (status === 413 || status === 400) return "tooLong";
+    return "confused";
+  }
+
+  async function ask({ question, audio }) {
+    if (busy) return;
+    if (!question && !audio) { q.focus(); return; }
+    busy = true; askBtn.disabled = true;
+    reset();
+    setState("thinking");
+    say("thinking");
+
+    const started = Date.now();
+    let data = {}, httpStatus = 0;
+    try {
+      const r = audio
+        ? await fetch("/api/ask", { method: "POST", headers: { "Content-Type": audio.type }, body: audio })
+        : await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+      httpStatus = r.status;
+      data = await r.json().catch(() => ({}));
+    } catch {}
+    // Switch the site to the question's language when we support it.
+    if (LANGS.includes(data.lang) && data.lang !== lang) setLang(data.lang);
+    if (audio && data.transcript) { question = data.transcript; q.value = data.transcript; fit(); }
+    const wait = MIN_THINK_MS - (Date.now() - started);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+
+    busy = false; askBtn.disabled = false;
+    if (!data.answer) {
+      setState(null); say("huh");
+      setStatus(httpStatus ? errorKey(httpStatus) : "offline");
+      return;
+    }
+    reveal(question, data.answer);
+  }
+
+  // ---- questions in the URL: yesorno.site/should-i-go-to-the-gym ----
+  // Typing: / . - _ + all work as spaces (/ and . are on the phone URL keyboard); no spaces works too.
+  function questionFromPath() {
+    let p = location.pathname;
+    try { p = decodeURIComponent(p); } catch {}
+    p = p.replace(/^\/+|\/+$/g, "");
+    if (!p || p === "index.html") return "";
+    return p.replace(/[\/._+-]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+  }
+  // Sharing: lowercase, no accents, words joined by hyphens.
+  function slug(text) {
+    return text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/ß/g, "ss")
+      .replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 120);
+  }
+  const questionUrl = (question) => location.origin + (question ? "/" + encodeURIComponent(slug(question)) : "/");
+  function setPath(question) {
+    const path = question && slug(question) ? "/" + encodeURIComponent(slug(question)) : "/";
+    if (location.pathname !== path) history.replaceState(null, "", path);
+  }
+
+  // "you already asked" is about *this* person, not the server's dictionary
+  // (a friend opening your link hasn't asked yet). Remembered per browser.
+  function askedBefore(question) {
+    const key = slug(question || "").replace(/-/g, "");
+    if (!key) return false;
+    let seen = [];
+    try { seen = JSON.parse(store.get("yesorno-asked") || "[]"); } catch {}
+    const before = seen.includes(key);
+    if (!before) store.set("yesorno-asked", JSON.stringify([...seen, key].slice(-300)));
+    return before;
+  }
+
+  function reveal(question, answer) {
+    const again = askedBefore(question);
+    last = { question, answer };
+    setPath(question);
+    answered = true;
+    renderAskBtn();
+    if (answer === "SERIOUS") {
+      setState("serious");
+      say("serious");
+      setStatus("help");
+      shareBtn.hidden = true;
+      return;
+    }
+    shareBtn.hidden = false;
+    const yes = answer === "YES";
+    setState(yes ? "yes" : "no");
+    say(yes ? "yes" : "no", true);
+    setStatus(again ? "again" : "");
+    if (yes) yesQuack(); else noQuack();
+    if (navigator.vibrate) navigator.vibrate(yes ? 60 : [50, 40, 50]);
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault(); unlockAudio(); stopRecording();
+    ask({ question: q.value.trim() });
+  });
+
+  // ---- share ----
+  let shareTimer;
+  function resetShareBtn() {
+    clearTimeout(shareTimer);
+    shareBtn.classList.remove("copied");
+    shareBtn.textContent = T().share;
+  }
+  function showCopied(text) {
+    clearTimeout(shareTimer);
+    shareBtn.classList.remove("copied"); void shareBtn.offsetWidth;
+    shareBtn.replaceChildren();
+    const tag = document.createElement("span");
+    tag.className = "tag"; tag.textContent = "✓ " + T().copied;
+    shareBtn.append(tag, document.createTextNode(text));
+    shareBtn.classList.add("copied");
+    shareTimer = setTimeout(resetShareBtn, 3500);
+  }
+  shareBtn.addEventListener("click", async () => {
+    if (!last) return;
+    const word = T()[last.answer === "YES" ? "yes" : "no"];
+    const text = last.question ? T().shareQ(last.question, word) : T().shareLoud(word);
+    const url = questionUrl(last.question);
+    const full = text + "\n" + url;
+    try {
+      if (navigator.share && matchMedia("(pointer: coarse)").matches) { await navigator.share({ text, url }); return; }
+      await navigator.clipboard.writeText(full);
+      showCopied(full);
+    } catch (e) {
+      if (e && e.name !== "AbortError") setStatus("screenshot");
+    }
+  });
+
+  setLang(lang);
+
+  // Opened with a question in the URL: ask it right away.
+  const fromUrl = questionFromPath();
+  if (fromUrl) { q.value = fromUrl; fit(); ask({ question: fromUrl }); }
+})();
+</script>
+</body>
+</html>
