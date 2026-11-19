@@ -461,8 +461,6 @@
       breather: "the duck needs a breather. try again in a minute.", tooLong: "keep it short. the duck doesn't read essays.",
       micBlocked: "mic is blocked. typing works too.",
       footer: "for fun. not advice. the duck is not a doctor.", soundOn: "sound: on", soundOff: "sound: off",
-      shareQ: (q, w) => `i asked the duck “${q}”\n🦆 ${w}`,
-      shareLoud: (w) => `i asked the duck something out loud.\n🦆 ${w}`,
     },
     fr: {
       doc: "Oui ou Non ?", t1: "OUI", t2: "ou", t3: "NON ?",
@@ -480,8 +478,6 @@
       breather: "le canard fait une pause. réessaie dans une minute.", tooLong: "fais court. le canard ne lit pas de romans.",
       micBlocked: "micro bloqué. tu peux aussi écrire.",
       footer: "pour rire. pas un conseil. le canard n'est pas médecin.", soundOn: "son : oui", soundOff: "son : non",
-      shareQ: (q, w) => `j'ai demandé au canard « ${q} »\n🦆 ${w}`,
-      shareLoud: (w) => `j'ai posé une question au canard à voix haute.\n🦆 ${w}`,
     },
     es: {
       doc: "¿Sí o No?", t1: "¿SÍ", t2: "o", t3: "NO?",
@@ -499,8 +495,6 @@
       breather: "el pato necesita un respiro. prueba en un minuto.", tooLong: "sé breve. el pato no lee ensayos.",
       micBlocked: "micrófono bloqueado. también puedes escribir.",
       footer: "es broma. no es un consejo. el pato no es médico.", soundOn: "sonido: sí", soundOff: "sonido: no",
-      shareQ: (q, w) => `le pregunté al pato «${q}»\n🦆 ${w}`,
-      shareLoud: (w) => `le pregunté algo al pato en voz alta.\n🦆 ${w}`,
     },
     de: {
       doc: "Ja oder Nein?", t1: "JA", t2: "oder", t3: "NEIN?",
@@ -518,8 +512,6 @@
       breather: "die ente braucht 'ne pause. versuch's in einer minute.", tooLong: "kurz bitte. die ente liest keine romane.",
       micBlocked: "mikro blockiert. tippen geht auch.",
       footer: "nur spaß. kein rat. die ente ist kein arzt.", soundOn: "ton: an", soundOff: "ton: aus",
-      shareQ: (q, w) => `ich hab die ente gefragt: „${q}“\n🦆 ${w}`,
-      shareLoud: (w) => `ich hab die ente laut was gefragt.\n🦆 ${w}`,
     },
   };
   const LANGS = Object.keys(I18N);
@@ -529,7 +521,10 @@
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
   const browserLang = (navigator.languages || [navigator.language || "en"]).map(l => l.slice(0, 2).toLowerCase()).find(l => LANGS.includes(l));
-  let lang = LANGS.includes(store.get("yesorno-lang")) ? store.get("yesorno-lang") : (browserLang || "en");
+  // Which language to open in: the one the shared link was made in (?lang=fr), then a flag the
+  // person picked themselves on an earlier visit, then the browser's language, then English.
+  const linkLang = new URLSearchParams(location.search).get("lang");
+  let lang = [linkLang, store.get("yesorno-lang"), browserLang].find(l => LANGS.includes(l)) || "en";
   const T = () => I18N[lang];
 
   // What's on screen, by key, so a language switch can re-render it.
@@ -538,7 +533,6 @@
   function setLang(next) {
     if (!LANGS.includes(next)) return;
     lang = next;
-    store.set("yesorno-lang", lang);
     document.documentElement.lang = lang;
     document.title = T().doc;
     document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = T()[el.dataset.i18n]; });
@@ -563,7 +557,12 @@
   addEventListener("resize", fitTitle);
   document.fonts?.ready.then(fitTitle);
 
-  document.querySelectorAll(".flag[data-lang]").forEach(f => f.addEventListener("click", () => setLang(f.dataset.lang)));
+  // Only a flag the person tapped is remembered for next time; automatic switches aren't.
+  document.querySelectorAll(".flag[data-lang]").forEach(f => f.addEventListener("click", () => {
+    store.set("yesorno-lang", f.dataset.lang);
+    setLang(f.dataset.lang);
+    if (answered && last) setPath(last.question);
+  }));
 
   const MIN_THINK_MS = 1600;
   const MAX_RECORD_MS = 10000;
@@ -844,10 +843,14 @@
     return text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/ß/g, "ss")
       .replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 120);
   }
-  const questionUrl = (question) => location.origin + (question ? "/" + encodeURIComponent(slug(question)) : "/");
+  // Question links carry the language they were made in, so they open in it: /should-i-go?lang=fr
+  function questionPath(question) {
+    return question && slug(question) ? "/" + encodeURIComponent(slug(question)) + "?lang=" + lang : "/";
+  }
+  const questionUrl = (question) => location.origin + questionPath(question);
   function setPath(question) {
-    const path = question && slug(question) ? "/" + encodeURIComponent(slug(question)) : "/";
-    if (location.pathname !== path) history.replaceState(null, "", path);
+    const path = questionPath(question);
+    if (location.pathname + location.search !== path) history.replaceState(null, "", path);
   }
 
   function reveal(question, answer) {
@@ -869,7 +872,7 @@
       shareBtn.hidden = true;
       return;
     }
-    shareBtn.hidden = false;
+    shareBtn.hidden = !question; // a spoken question with no transcript has no link to share
     const yes = answer === "YES";
     setState(yes ? "yes" : "no");
     say(yes ? "yes" : "no", true);
@@ -908,17 +911,15 @@
     return ok;
   }
   shareBtn.addEventListener("click", async () => {
-    if (!last) return;
-    const word = T()[last.answer === "YES" ? "yes" : "no"];
-    const text = last.question ? T().shareQ(last.question, word) : T().shareLoud(word);
+    // Just the link, no spoiler: whoever opens it sees the duck answer.
+    if (!last?.question) return;
     const url = questionUrl(last.question);
-    const full = text + "\n" + url;
     if (navigator.share && matchMedia("(pointer: coarse)").matches) {
-      try { await navigator.share({ text, url }); return; }
+      try { await navigator.share({ url }); return; }
       catch (e) { if (e && e.name === "AbortError") return; }
     }
-    if (await copyText(full)) showCopied();
-    else window.prompt("", full);
+    if (await copyText(url)) showCopied();
+    else window.prompt("", url);
   });
 
   setLang(lang);
