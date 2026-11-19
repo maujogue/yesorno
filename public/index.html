@@ -510,11 +510,12 @@
   const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
   const recType = canRecord && ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]
     .find(t => MediaRecorder.isTypeSupported(t));
-  let recorder = null, stream = null, vadTimer = null, maxTimer = null;
+  let recorder = null, stream = null, vadTimer = null, maxTimer = null, starting = false;
   if (canRecord) mic.hidden = false;
 
   async function startRecording() {
-    if (busy || recorder) return;
+    if (busy || recorder || starting) return; // `starting`: still waiting on the mic permission prompt
+    starting = true;
     unlockAudio();
     reset(); q.value = ""; fit();
     try {
@@ -522,6 +523,8 @@
     } catch {
       setStatus("micBlocked");
       return;
+    } finally {
+      starting = false;
     }
     const chunks = [];
     recorder = new MediaRecorder(stream, recType ? { mimeType: recType } : undefined);
@@ -613,9 +616,11 @@
     resetShareBtn();
   }
 
-  function errorKey(status) {
+  // The server says which message fits in `code`; the status is only a fallback.
+  function errorKey(status, code) {
+    if (code && code in T()) return code;
     if (status === 429) return "breather";
-    if (status === 413 || status === 400) return "tooLong";
+    if (status === 413) return "tooLong";
     return "confused";
   }
 
@@ -645,7 +650,7 @@
     busy = false; askBtn.disabled = false;
     if (!data.answer) {
       setState(null); say("huh");
-      setStatus(httpStatus ? errorKey(httpStatus) : "offline");
+      setStatus(httpStatus ? errorKey(httpStatus, data.code) : "offline");
       return;
     }
     reveal(question, data.answer);

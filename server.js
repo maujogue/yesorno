@@ -11,15 +11,9 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1"; // only reachable locally; the Cloudflare tunnel connects here
-// Trust Cloudflare's cf-connecting-ip header for rate limiting only when every request comes through the
-// tunnel. Defaults to on when listening on loopback, off otherwise (e.g. in Docker with HOST=0.0.0.0),
-// because a client that reaches the port directly can put any value in that header.
-const LOOPBACK = ["127.0.0.1", "::1", "localhost"].includes(HOST);
-const TRUST_CF_IP = process.env.TRUST_CF_IP ? process.env.TRUST_CF_IP === "1" : LOOPBACK;
 const API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = process.env.GEMINI_MODEL || "gemini-decision-1";
 const MAX_QUESTION = 200;
-const RATE_LIMIT = Number(process.env.RATE_LIMIT_PER_MIN || 20); // questions per IP per minute
 const CACHE_MAX = Number(process.env.CACHE_MAX || 100_000);
 
 // Cloudflare Workers AI: Whisper for transcripts, clef-flash as the backup decision model.
@@ -81,8 +75,6 @@ const AUDIO_TYPES = ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audi
 
 // ---------- helpers ----------
 
-const hits = new Map(); // ip -> [timestamps]
-const MAX_TRACKED_IPS = 50_000;
 
 // ---------- answer dictionary ----------
 // Known questions are answered from here without calling any API: same question, same answer.
@@ -169,19 +161,6 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
     process.exit(0);
   });
 }
-
-function rateLimited(ip) {
-  const now = Date.now();
-  const recent = (hits.get(ip) || []).filter((t) => now - t < 60_000);
-  if (!recent.length && hits.size >= MAX_TRACKED_IPS) return true; // under a flood, refuse new IPs
-  recent.push(now);
-  hits.set(ip, recent);
-  return recent.length > RATE_LIMIT;
-}
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, ts] of hits) if (ts.every((t) => now - t >= 60_000)) hits.delete(ip);
-}, 60_000).unref();
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, {
@@ -312,21 +291,19 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/ask") {
     if (req.method !== "POST") return json(res, 405, { error: "POST only" });
-    const ip = (TRUST_CF_IP && req.headers["cf-connecting-ip"]) || req.socket.remoteAddress || "?";
-    if (rateLimited(ip)) return json(res, 429, { error: "the duck needs a breather. try again in a minute." });
 
     const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
 
     // Spoken question.
     if (type.startsWith("audio/")) {
-      if (!AUDIO_TYPES.includes(type)) return json(res, 415, { error: "the duck can't hear that format." });
+      if (!AUDIO_TYPES.includes(type)) return json(res, 415, { error: "the duck can't hear that format.", code: "confused" });
       let audio;
       try {
         audio = await readBuffer(req, MAX_AUDIO_BYTES);
       } catch {
-        return json(res, 413, { error: "too long. the duck has a short attention span." });
+        return json(res, 413, { error: "too long. the duck has a short attention span.", code: "tooLong" });
       }
-      if (audio.length < 1000) return json(res, 400, { error: "the duck didn't hear anything." });
+      if (audio.length < 1000) return json(res, 400, { error: "the duck didn't hear anything.", code: "nothing" });
 
       // Transcribe first: a known question is answered from the dictionary without a model call.
       // The transcript is also shown, shared and used by the fallback model. A failed transcript
@@ -343,7 +320,7 @@ async function handle(req, res) {
         return json(res, 200, transcript ? { ...result, transcript } : result);
       } catch (err) {
         console.error(new Date().toISOString(), err.message);
-        return json(res, 502, { error: "the duck got confused. try again." });
+        return json(res, 502, { error: "the duck got confused. try again.", code: "confused" });
       }
     }
 
@@ -352,13 +329,13 @@ async function handle(req, res) {
     try {
       question = String(JSON.parse(await readBody(req)).question || "").trim();
     } catch {
-      return json(res, 400, { error: "Bad request" });
+      return json(res, 400, { error: "Bad request", code: "confused" });
     }
-    if (!question) return json(res, 400, { error: "ask me something." });
-    if (question.length > MAX_QUESTION) return json(res, 400, { error: "keep it short. the duck doesn't read essays." });
+    if (!question) return json(res, 400, { error: "ask me something.", code: "idle" });
+    if (question.length > MAX_QUESTION) return json(res, 400, { error: "keep it short. the duck doesn't read essays.", code: "tooLong" });
 
     const key = questionKey(question);
-    if (!key) return json(res, 400, { error: "ask me something." });
+    if (!key) return json(res, 400, { error: "ask me something.", code: "idle" });
     const cached = known(key);
     if (cached) return json(res, 200, { ...cached, again: true });
 
@@ -367,7 +344,7 @@ async function handle(req, res) {
       return json(res, 200, result);
     } catch (err) {
       console.error(new Date().toISOString(), err.message);
-      return json(res, 502, { error: "the duck got confused. try again." });
+      return json(res, 502, { error: "the duck got confused. try again.", code: "confused" });
     }
   }
 
