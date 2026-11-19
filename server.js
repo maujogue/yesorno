@@ -1,5 +1,5 @@
 // yesorno.site — tiny zero-dependency server.
-// Serves public/ and exposes POST /api/ask, which asks the model for YES / NO / SERIOUS.
+// Serves public/ and exposes POST /api/ask, which asks the model for YES / NO / SERIOUS / OPEN.
 // Run: node --env-file=.env server.js   (Node 22.13+ for the built-in node:sqlite)
 
 import http from "node:http";
@@ -47,12 +47,18 @@ const TYPES = {
 const FILE_LIKE = /\.(php|asp|aspx|jsp|cgi|env|ini|txt|xml|json|js|mjs|css|map|ico|png|jpe?g|gif|svg|webp|webmanifest|zip|gz|sql|bak|log|ya?ml|html?)$|\/\.|^\/(wp-|cgi-bin|\.well-known)/i;
 
 const SERIOUS_THRESHOLD = 0.5; // above this, show the help message instead of a YES/NO
+const OPEN_THRESHOLD = 0.5; // above this, the question can't be answered with yes or no
 
 const DECISION_QUESTIONS = {
   serious: {
     type: "noul",
     instructions:
       "Does this question involve self-harm or suicide, harming someone else, a medical decision such as stopping or changing medication, abuse, or a genuine crisis or emergency?",
+  },
+  open: {
+    type: "noul",
+    instructions:
+      "Is this something a plain yes or no can NOT answer? Score high for open questions (what, which, who, where, when, why, how, how much, how many), choices between options (\"pizza or sushi?\"), requests for explanations, facts, lists, ideas or recommendations, and text that isn't a question or a decision at all. Score low for anything a yes or no answers, including short decisions without a question word, like \"go to the gym\" or \"text my ex\".",
   },
   verdict: {
     type: "choice",
@@ -187,9 +193,11 @@ const shouldFallback = (e) => !e.status || e.status === 429 || e.status >= 500;
 
 function interpret(answers) {
   const serious = Number(answers?.serious?.noul);
+  const open = Number(answers?.open?.noul);
   const verdict = answers?.verdict?.choice;
   const lang = answers?.lang?.choice in DECISION_QUESTIONS.lang.criteria ? answers.lang.choice : "other";
   if (Number.isFinite(serious) && serious >= SERIOUS_THRESHOLD) return { answer: "SERIOUS", lang };
+  if (Number.isFinite(open) && open >= OPEN_THRESHOLD) return { answer: "OPEN", lang };
   if (verdict === "yes") return { answer: "YES", lang };
   if (verdict === "no") return { answer: "NO", lang };
   throw new ModelError(`unexpected decision output: ${JSON.stringify(answers).slice(0, 200)}`);

@@ -2,6 +2,6 @@
   "name": "yesorno",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node --env-file=.env server.js" },
+  "scripts": { "start": "sh scripts/start.sh" },
   "engines": { "node": ">=22.13" }
 }
