@@ -16,18 +16,22 @@ const MODEL = process.env.GEMINI_MODEL || "gemini-decision-1";
 const MAX_QUESTION = 200;
 const CACHE_MAX = Number(process.env.CACHE_MAX || 100_000);
 
-// Cloudflare Workers AI: Whisper for transcripts, clef-flash as the backup decision model.
+// ElevenLabs Scribe for transcripts of spoken questions.
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const STT_MODEL = process.env.STT_MODEL || "scribe_v2";
+
+// Cloudflare Workers AI: clef-flash as the backup decision model.
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
 const CF_API_TOKEN = process.env.CF_API_TOKEN;
 const CF_ENABLED = Boolean(CF_ACCOUNT_ID && CF_API_TOKEN);
-const STT_MODEL = process.env.CF_STT_MODEL || "@cf/openai/whisper-large-v3-turbo";
 const FALLBACK_MODEL = process.env.CF_FALLBACK_MODEL || "clef-flash"; // "clef" or "clef-flash"
 
 if (!API_KEY) {
   console.error("Missing GEMINI_API_KEY. Put it in .env (see .env.example).");
   process.exit(1);
 }
-if (!CF_ENABLED) console.warn("CF_ACCOUNT_ID / CF_API_TOKEN not set: no transcripts and no fallback model.");
+if (!CF_ENABLED) console.warn("CF_ACCOUNT_ID / CF_API_TOKEN not set: no fallback model.");
+if (!ELEVENLABS_API_KEY) console.warn("ELEVENLABS_API_KEY not set: spoken questions get no transcript.");
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(ROOT, "public");
@@ -231,7 +235,7 @@ async function askGemini(input) {
 const cfUrl = (model) => `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${model}`;
 const cfHeaders = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${CF_API_TOKEN}` });
 
-// Backup: Cloudflare clef-flash. Text only, so spoken questions use the Whisper transcript.
+// Backup: Cloudflare clef-flash. Text only, so spoken questions use the transcript.
 async function askClef(text) {
   const j = await post(
     cfUrl("@cf/cloudflare/" + FALLBACK_MODEL),
@@ -242,9 +246,14 @@ async function askClef(text) {
   return interpret(j.result?.answers);
 }
 
-async function transcribe(audio) {
-  const j = await post(cfUrl(STT_MODEL), cfHeaders(), JSON.stringify({ audio: audio.toString("base64") }), "whisper");
-  return String(j.result?.text || "").trim().slice(0, 300);
+// ElevenLabs Scribe: ~1s for a short question, detects the language by itself.
+async function transcribe(audio, type) {
+  const form = new FormData();
+  form.append("model_id", STT_MODEL);
+  form.append("tag_audio_events", "false");
+  form.append("file", new Blob([audio], { type }), "question." + (type.split("/")[1] || "webm"));
+  const j = await post("https://api.elevenlabs.io/v1/speech-to-text", { "xi-api-key": ELEVENLABS_API_KEY }, form, "scribe");
+  return String(j.text || "").trim().slice(0, 300);
 }
 
 // Ask Gemini; if it's rate limited, ask clef-flash with the text.
@@ -314,15 +323,19 @@ async function handle(req, res) {
       if (audio.length < 1000) return json(res, 400, { error: "the duck didn't hear anything.", code: "nothing" });
 
       // Transcribe first: a known question is answered from the dictionary without a model call.
-      // The transcript is also shown, shared and used by the fallback model. A failed transcript
-      // never blocks the answer: the model then decides on the audio itself.
-      const transcript = CF_ENABLED
-        ? await transcribe(audio).catch((e) => (console.error(new Date().toISOString(), e.message), ""))
+      // The transcript is also shown, shared and decided on as text (faster than audio, and the same
+      // answer as typing it). A failed transcript never blocks the answer: the model then decides
+      // on the audio itself.
+      const transcript = ELEVENLABS_API_KEY
+        ? await transcribe(audio, type).catch((e) => (console.error(new Date().toISOString(), e.message), ""))
         : "";
       const key = transcript && questionKey(transcript);
       const cached = key && known(key);
       if (cached) return json(res, 200, { ...cached, transcript, again: true });
-      const ask = () => decide([{ type: "audio", mime_type: type, data: audio.toString("base64") }], transcript);
+      const ask = () => decide(
+        transcript ? [{ type: "text", text: transcript }] : [{ type: "audio", mime_type: type, data: audio.toString("base64") }],
+        transcript,
+      );
       try {
         const result = key ? await answerOnce(key, transcript, ask) : await ask();
         return json(res, 200, transcript ? { ...result, transcript } : result);
@@ -388,4 +401,4 @@ async function handle(req, res) {
   }
 }
 
-server.listen(PORT, HOST, () => console.log(`yesorno on http://${HOST}:${PORT} (model: ${MODEL}${CF_ENABLED ? `, fallback: ${FALLBACK_MODEL}, stt: ${STT_MODEL}` : ""})`));
+server.listen(PORT, HOST, () => console.log(`yesorno on http://${HOST}:${PORT} (model: ${MODEL}${CF_ENABLED ? `, fallback: ${FALLBACK_MODEL}` : ""}${ELEVENLABS_API_KEY ? `, stt: ${STT_MODEL}` : ""})`));
