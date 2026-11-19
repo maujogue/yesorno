@@ -797,7 +797,7 @@
     return "confused";
   }
 
-  async function ask({ question, audio }) {
+  async function ask({ question, audio, from }) {
     if (busy) return;
     if (!question && !audio) { q.focus(); return; }
     busy = true; askBtn.disabled = true;
@@ -810,7 +810,7 @@
     try {
       const r = audio
         ? await fetch("/api/ask", { method: "POST", headers: { "Content-Type": audio.type }, body: audio })
-        : await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+        : await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, from }) });
       httpStatus = r.status;
       data = await r.json().catch(() => ({}));
     } catch {}
@@ -926,7 +926,7 @@
 
   // Opened with a question in the URL: ask it right away.
   const fromUrl = questionFromPath();
-  if (fromUrl) { q.value = fromUrl; fit(); ask({ question: fromUrl }); }
+  if (fromUrl) { q.value = fromUrl; fit(); ask({ question: fromUrl, from: "link" }); }
 })();
 </script>
 </body>

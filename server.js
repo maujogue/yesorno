@@ -116,10 +116,25 @@ db.exec(`
     q      TEXT NOT NULL,
     at     TEXT NOT NULL
   );
+  -- One row per ask, for stats. No IPs or anything else about the person.
+  -- answer: YES / NO / OPEN / SERIOUS, or the error code the page was sent (confused, tooLong, ...).
+  -- key joins to answers.key for the question text (null when there was no question, e.g. no transcript).
+  CREATE TABLE IF NOT EXISTS asks (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    at     TEXT NOT NULL,
+    via    TEXT NOT NULL,    -- typed | link (opened a question URL) | voice
+    lang   TEXT,
+    answer TEXT NOT NULL,
+    cached INTEGER NOT NULL, -- 1 = answered from the dictionary, no model call
+    ms     INTEGER NOT NULL, -- time spent on the server
+    key    TEXT
+  );
+  CREATE INDEX IF NOT EXISTS asks_at ON asks (at);
 `);
 const getStmt = db.prepare("SELECT answer, lang FROM answers WHERE key = ?");
 // First answer wins: a second writer for the same key keeps the stored answer.
 const insertStmt = db.prepare("INSERT INTO answers (key, answer, lang, q, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(key) DO NOTHING");
+const logAskStmt = db.prepare("INSERT INTO asks (at, via, lang, answer, cached, ms, key) VALUES (?, ?, ?, ?, ?, ?, ?)");
 const trimStmt = db.prepare("DELETE FROM answers WHERE id <= (SELECT max(id) FROM answers) - ?"); // drop the oldest
 
 // One-time import of the old JSON dictionary, if there is one and the database is still empty.
@@ -310,17 +325,29 @@ async function handle(req, res) {
     if (req.method !== "POST") return json(res, 405, { error: "POST only" });
 
     const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    // Every reply below goes through `reply`, which also records the ask in the stats table.
+    const started = Date.now();
+    const meta = { via: type.startsWith("audio/") ? "voice" : "typed", key: null };
+    const reply = (status, obj) => {
+      try {
+        logAskStmt.run(new Date().toISOString(), meta.via, obj.lang || null, obj.answer || obj.code || "error",
+          obj.again ? 1 : 0, Date.now() - started, meta.key || null);
+      } catch (e) {
+        console.error(new Date().toISOString(), "stats:", e.message);
+      }
+      return json(res, status, obj);
+    };
 
     // Spoken question.
     if (type.startsWith("audio/")) {
-      if (!AUDIO_TYPES.includes(type)) return json(res, 415, { error: "the duck can't hear that format.", code: "confused" });
+      if (!AUDIO_TYPES.includes(type)) return reply(415, { error: "the duck can't hear that format.", code: "confused" });
       let audio;
       try {
         audio = await readBuffer(req, MAX_AUDIO_BYTES);
       } catch {
-        return json(res, 413, { error: "too long. the duck has a short attention span.", code: "tooLong" });
+        return reply(413, { error: "too long. the duck has a short attention span.", code: "tooLong" });
       }
-      if (audio.length < 1000) return json(res, 400, { error: "the duck didn't hear anything.", code: "nothing" });
+      if (audio.length < 1000) return reply(400, { error: "the duck didn't hear anything.", code: "nothing" });
 
       // Transcribe first: a known question is answered from the dictionary without a model call.
       // The transcript is also shown, shared and decided on as text (faster than audio, and the same
@@ -330,42 +357,46 @@ async function handle(req, res) {
         ? await transcribe(audio, type).catch((e) => (console.error(new Date().toISOString(), e.message), ""))
         : "";
       const key = transcript && questionKey(transcript);
+      meta.key = key;
       const cached = key && known(key);
-      if (cached) return json(res, 200, { ...cached, transcript, again: true });
+      if (cached) return reply(200, { ...cached, transcript, again: true });
       const ask = () => decide(
         transcript ? [{ type: "text", text: transcript }] : [{ type: "audio", mime_type: type, data: audio.toString("base64") }],
         transcript,
       );
       try {
         const result = key ? await answerOnce(key, transcript, ask) : await ask();
-        return json(res, 200, transcript ? { ...result, transcript } : result);
+        return reply(200, transcript ? { ...result, transcript } : result);
       } catch (err) {
         console.error(new Date().toISOString(), err.message);
-        return json(res, 502, { error: "the duck got confused. try again.", code: "confused" });
+        return reply(502, { error: "the duck got confused. try again.", code: "confused" });
       }
     }
 
     // Typed question.
     let question;
     try {
-      question = String(JSON.parse(await readBody(req)).question || "").trim();
+      const body = JSON.parse(await readBody(req));
+      question = String(body.question || "").trim();
+      if (body.from === "link") meta.via = "link";
     } catch {
-      return json(res, 400, { error: "Bad request", code: "confused" });
+      return reply(400, { error: "Bad request", code: "confused" });
     }
-    if (!question) return json(res, 400, { error: "ask me something.", code: "idle" });
-    if (question.length > MAX_QUESTION) return json(res, 400, { error: "keep it short. the duck doesn't read essays.", code: "tooLong" });
+    if (!question) return reply(400, { error: "ask me something.", code: "idle" });
+    if (question.length > MAX_QUESTION) return reply(400, { error: "keep it short. the duck doesn't read essays.", code: "tooLong" });
 
     const key = questionKey(question);
-    if (!key) return json(res, 400, { error: "ask me something.", code: "idle" });
+    meta.key = key;
+    if (!key) return reply(400, { error: "ask me something.", code: "idle" });
     const cached = known(key);
-    if (cached) return json(res, 200, { ...cached, again: true });
+    if (cached) return reply(200, { ...cached, again: true });
 
     try {
       const result = await answerOnce(key, question, () => decide([{ type: "text", text: question }], question));
-      return json(res, 200, result);
+      return reply(200, result);
     } catch (err) {
       console.error(new Date().toISOString(), err.message);
-      return json(res, 502, { error: "the duck got confused. try again.", code: "confused" });
+      return reply(502, { error: "the duck got confused. try again.", code: "confused" });
     }
   }
 
